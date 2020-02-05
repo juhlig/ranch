@@ -54,10 +54,17 @@
 -type opts() :: any() | transport_opts(any()).
 -export_type([opts/0]).
 
+-type alarm() :: undefined
+	| #{treshold => non_neg_integer(),
+	    callback => fun((ref(), pid(), [pid()]) -> any()) | {module(), atom()},
+	    cooldown => non_neg_integer()}.
+-export_type([alarm/0]).
+
 -type transport_opts(SocketOpts) :: #{
 	connection_type => worker | supervisor,
 	handshake_timeout => timeout(),
 	max_connections => max_conns(),
+	alarm => alarm(),
 	logger => module(),
 	num_acceptors => pos_integer(),
 	num_conns_sups => pos_integer(),
@@ -121,6 +128,18 @@ validate_transport_opt(max_connections, infinity, _) ->
 	true;
 validate_transport_opt(max_connections, Value, _) ->
 	is_integer(Value) andalso Value >= 0;
+validate_transport_opt(alarm, undefined, _) ->
+	true;
+validate_transport_opt(alarm, #{treshold := Treshold, callback := Callback, cooldown := Cooldown}, _) ->
+	ValidTreshold = is_integer(Treshold) andalso Treshold>=0,
+	ValidCooldown = is_integer(Cooldown) andalso Cooldown>=0,
+	ValidCallback = case Callback of
+		{Module, Function} ->
+			is_atom(Module) andalso is_atom(Function);
+		_ ->
+			is_function(Callback, 3)
+	end,
+	ValidTreshold andalso ValidCooldown andalso ValidCallback;
 validate_transport_opt(logger, Value, _) ->
 	is_atom(Value);
 validate_transport_opt(num_acceptors, Value, _) ->

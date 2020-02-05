@@ -76,7 +76,8 @@ groups() ->
 		misc_info_embedded,
 		misc_opts_logger,
 		misc_set_transport_options,
-		misc_wait_for_connections
+		misc_wait_for_connections,
+		misc_connection_alarm
 	]}, {supervisor, [
 		connection_type_supervisor,
 		connection_type_supervisor_separate_from_connection,
@@ -402,6 +403,84 @@ do_expect_waiter(WaiterPid) ->
 				_ ->
 					timeout
 			end
+	end.
+
+misc_connection_alarm(_) ->
+	doc("Ensure that connection alarm works"),
+	Name = name(),
+
+	Self = self(),
+	TransOpts0 = #{num_conns_sups => 1},
+	AlarmCallback = fun (Ref, _, ActiveConns) ->
+		Self ! {connection_alarm, {Ref, length(ActiveConns)}}
+	end,
+	ConnectOpts = [binary, {active, false}, {packet, raw}],
+
+	%% Start with alarm treshold set to 2.
+	{ok, _} = ranch:start_listener(Name, ranch_tcp,
+		TransOpts0#{alarm => #{treshold => 2, cooldown => 500,
+		callback => AlarmCallback}}, echo_protocol, []),
+	Port = ranch:get_port(Name),
+
+	%% Establish 3 connections.
+	[Conn1, Conn2, Conn3] = [begin
+		{ok, Conn} = gen_tcp:connect("localhost", Port, ConnectOpts), Conn end ||
+		_ <- lists:seq(1, 3)],
+
+	%% First alarm should be triggered when connection count reached 2.
+	%% After that, there should be no more alarms in the cooldown period.
+	%% After that, a new alarm should report connection count as being 3.
+	2 = do_recv_connection_alarm(Name, 600),
+	undefined = do_recv_connection_alarm(Name, 250),
+	3 = do_recv_connection_alarm(Name, 600),
+
+	%% Establish a fourth connection, this should not cause an immediate alarm within
+	%% the cooldown period. After that, a new alarm should report connection count as
+	%% being 4.
+	{ok, _}=gen_tcp:connect("localhost", Port, ConnectOpts),
+	undefined = do_recv_connection_alarm(Name, 250),
+	4 = do_recv_connection_alarm(Name, 600),
+
+	%% Close 2 connections, 2 remain. There should still be alarms as we are still
+	%% over/at the treshold of 2.
+	ok = gen_tcp:close(Conn1),
+	ok = gen_tcp:close(Conn2),
+	2 = do_recv_connection_alarm(Name, 600),
+
+	%% Close 1 more connection, 1 remains. Alarms should stop since we are now under
+	%% the treshold of 2.
+	ok = gen_tcp:close(Conn3),
+	undefined = do_recv_connection_alarm(Name, 600),
+
+	%% Change the alarm settings, lowering the treshold to 1. A new alarm reporting
+	%% connection count 1 should be sent, as the new treshold of 1 is now at the
+	%% connection count of 1.
+	ok = ranch:set_transport_options(Name, TransOpts0#{alarm => #{treshold => 1,
+		cooldown => 500, callback => AlarmCallback}}),
+	1 = do_recv_connection_alarm(Name, 600),
+
+	%% Turn off alarms. Establishing a new connection should not cause an alarm.
+	ok = ranch:set_transport_options(Name, TransOpts0#{alarm => undefined}),
+	{ok, _}=gen_tcp:connect("localhost", Port, ConnectOpts),
+	undefined = do_recv_connection_alarm(Name, 600),
+
+	%% Set the treshold to 3 and the cooldown to 0, then establish 3 more connections.
+	%% The first connection should not cause an alarm as we are still under the treshold,
+	%% but each of the next two should cause an immediate alarm.
+	ok = ranch:set_transport_options(Name, TransOpts0#{alarm => #{treshold => 3,
+		cooldown => 0, callback => AlarmCallback}}),
+	_=[{ok, _}=gen_tcp:connect("localhost", Port, ConnectOpts) || _ <- lists:seq(1, 3)],
+	3 = do_recv_connection_alarm(Name, 100),
+	4 = do_recv_connection_alarm(Name, 100),
+
+	ok = ranch:stop_listener(Name),
+	ok.
+
+do_recv_connection_alarm(Name, Timeout) ->
+	receive
+		{connection_alarm, {Name, N}} -> N
+	after Timeout ->
+		undefined
 	end.
 
 %% ssl.

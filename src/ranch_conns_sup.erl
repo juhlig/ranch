@@ -41,6 +41,8 @@
 	opts :: any(),
 	handshake_timeout :: timeout(),
 	max_conns = undefined :: ranch:max_conns(),
+	alarm_ref :: undefined | reference(),
+	alarm = undefined :: ranch:alarm(),
 	logger = undefined :: module()
 }).
 
@@ -104,6 +106,7 @@ init(Parent, Ref, Id, Transport, TransOpts, Protocol, Logger) ->
 	process_flag(trap_exit, true),
 	ok = ranch_server:set_connections_sup(Ref, Id, self()),
 	MaxConns = ranch_server:get_max_connections(Ref),
+	Alarm = maps:get(alarm, TransOpts, undefined),
 	ConnType = maps:get(connection_type, TransOpts, worker),
 	Shutdown = maps:get(shutdown, TransOpts, 5000),
 	HandshakeTimeout = maps:get(handshake_timeout, TransOpts, 5000),
@@ -112,11 +115,12 @@ init(Parent, Ref, Id, Transport, TransOpts, Protocol, Logger) ->
 	loop(#state{parent=Parent, ref=Ref, conn_type=ConnType,
 		shutdown=Shutdown, transport=Transport, protocol=Protocol,
 		opts=ProtoOpts, handshake_timeout=HandshakeTimeout,
-		max_conns=MaxConns, logger=Logger}, 0, 0, []).
+		max_conns=MaxConns, alarm=Alarm, alarm_ref=undefined,
+		logger=Logger}, 0, 0, []).
 
 loop(State=#state{parent=Parent, ref=Ref, conn_type=ConnType,
 		transport=Transport, protocol=Protocol, opts=Opts,
-		max_conns=MaxConns, logger=Logger}, CurConns, NbChildren, Sleepers) ->
+		max_conns=MaxConns, alarm_ref=AlarmRef, logger=Logger}, CurConns, NbChildren, Sleepers) ->
 	receive
 		{?MODULE, start_protocol, To, Socket} ->
 			try Protocol:start_link(Ref, Transport, Opts) of
@@ -175,6 +179,9 @@ loop(State=#state{parent=Parent, ref=Ref, conn_type=ConnType,
 		{set_protocol_options, Opts2} ->
 			loop(State#state{opts=Opts2},
 				CurConns, NbChildren, Sleepers);
+		{timeout, AlarmRef, activate_alarm} ->
+			State2 = trigger_alarm(State#state{alarm_ref=undefined}, CurConns),
+			loop(State2, CurConns, NbChildren, Sleepers);
 		{'EXIT', Parent, Reason} ->
 			terminate(State, Reason, NbChildren);
 		{'EXIT', Pid, Reason} when Sleepers =:= [] ->
@@ -240,12 +247,14 @@ handshake(State=#state{ref=Ref, transport=Transport, handshake_timeout=Handshake
 			ProtocolPid ! {handshake, Ref, Transport, Socket, HandshakeTimeout},
 			put(SupPid, active),
 			CurConns2 = CurConns + 1,
-			if CurConns2 < MaxConns ->
+			Sleepers2 = if CurConns2 < MaxConns ->
 					To ! self(),
-					loop(State, CurConns2, NbChildren + 1, Sleepers);
+					Sleepers;
 				true ->
-					loop(State, CurConns2, NbChildren + 1, [To|Sleepers])
-			end;
+					[To|Sleepers]
+			end,
+			State2 = trigger_alarm(State, CurConns2),
+			loop(State2, CurConns2, NbChildren + 1, Sleepers2);
 		{error, _} ->
 			Transport:close(Socket),
 			%% Only kill the supervised pid, because the connection's pid,
@@ -254,6 +263,27 @@ handshake(State=#state{ref=Ref, transport=Transport, handshake_timeout=Handshake
 			To ! self(),
 			loop(State, CurConns, NbChildren, Sleepers)
 	end.
+
+trigger_alarm(State=#state{ref=Ref, alarm=#{treshold := Treshold, callback := Callback},
+		alarm_ref=undefined}, CurConns) when CurConns >= Treshold ->
+	ActiveConns = [Pid || {Pid, active} <- get()],
+	case Callback of
+		{Module, Function} ->
+			spawn(Module, Function, [Ref, self(), ActiveConns]);
+		_ ->
+			Self = self(),
+			spawn(fun () -> Callback(Ref, Self, ActiveConns) end)
+	end,
+	schedule_activate_alarm(State);
+trigger_alarm(State, _) ->
+	State.
+
+schedule_activate_alarm(State=#state{alarm=#{cooldown := Cooldown}, alarm_ref=undefined})
+		when Cooldown > 0 ->
+	AlarmRef = erlang:start_timer(Cooldown, self(), activate_alarm),
+	State#state{alarm_ref=AlarmRef};
+schedule_activate_alarm(State) ->
+	State.
 
 set_transport_options(State=#state{max_conns=MaxConns0}, CurConns, NbChildren, Sleepers0, TransOpts) ->
 	MaxConns1 = maps:get(max_connections, TransOpts, 1024),
@@ -266,8 +296,55 @@ set_transport_options(State=#state{max_conns=MaxConns0}, CurConns, NbChildren, S
 		false ->
 			Sleepers0
 	end,
-	loop(State#state{max_conns=MaxConns1, handshake_timeout=HandshakeTimeout, shutdown=Shutdown},
+	State1=set_alarm_option(State, TransOpts, CurConns),
+	loop(State1#state{max_conns=MaxConns1, handshake_timeout=HandshakeTimeout, shutdown=Shutdown},
 		CurConns, NbChildren, Sleepers1).
+
+set_alarm_option(State, TransOpts, CurConns) ->
+	NewAlarm = maps:get(alarm, TransOpts, undefined),
+	State1 = adapt_alarm(State, NewAlarm),
+	trigger_alarm(State1, CurConns).
+
+%% Alarm unchanged.
+adapt_alarm(State=#state{alarm=Alarm}, Alarm) ->
+	State;
+%% Not in cooldown, just replace settings.
+adapt_alarm(State=#state{alarm_ref=undefined}, NewAlarm) ->
+	State#state{alarm=NewAlarm};
+%% Turn alarm off and cancel cooldown timer.
+adapt_alarm(State=#state{alarm_ref=AlarmRef}, undefined) ->
+	_ = cancel_alarm_reactivation_timer(AlarmRef),
+	State#state{alarm=undefined, alarm_ref=undefined};
+%% Cooldown unchanged, just replace settings.
+adapt_alarm(State=#state{alarm=#{cooldown := Cooldown}}, NewAlarm=#{cooldown := Cooldown}) ->
+	State#state{alarm=NewAlarm};
+%% Cooldown changed to no cooldown, cancel cooldown timer.
+adapt_alarm(State=#state{alarm_ref=AlarmRef}, NewAlarm=#{cooldown := 0}) ->
+	_ = cancel_alarm_reactivation_timer(AlarmRef),
+	State#state{alarm=NewAlarm, alarm_ref=undefined};
+%% Cooldown changed, cancel current and start new timer taking the already elapsed time into account.
+adapt_alarm(State=#state{alarm=#{cooldown := OldCooldown}, alarm_ref=OldAlarmRef},
+		NewAlarm=#{cooldown := NewCooldown}) ->
+	OldTimeLeft=cancel_alarm_reactivation_timer(OldAlarmRef),
+	NewAlarmRef = case NewCooldown-OldCooldown+OldTimeLeft of
+		NewTimeLeft when NewTimeLeft>0 ->
+			erlang:start_timer(NewTimeLeft, self(), activate_alarm);
+		_ ->
+			undefined
+	end,
+	State#state{alarm=NewAlarm, alarm_ref=NewAlarmRef}.
+
+cancel_alarm_reactivation_timer(TRef) ->
+	case erlang:cancel_timer(TRef) of
+		%% Timer had already expired when we tried to cancel it, so we flush the
+		%% reactivation message it sent and return 0 as remaining time.
+		false ->
+			ok = receive {timeout, TRef, activate_alarm} -> ok after 0 -> ok end,
+			0;
+		%% Timer has not yet expired, we return the amount of time that was remaining.
+		TimeLeft ->
+			TimeLeft
+	end.
 
 -spec terminate(#state{}, any(), non_neg_integer()) -> no_return().
 terminate(#state{shutdown=brutal_kill}, Reason, _) ->
