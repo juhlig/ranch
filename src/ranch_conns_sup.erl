@@ -415,15 +415,11 @@ system_code_change({State0, CurConns, NbChildren, Sleepers}, _, OldVsn, Extra) -
 	{ok, State1}=code_change(OldVsn, State0, Extra),
 	{ok, {State1, CurConns, NbChildren, Sleepers}}.
 
-code_change({down, "2.0.0-rc.3"}, #state{parent=Parent, ref=Ref, conn_type=ConnType, shutdown=Shutdown, transport=Transport, protocol=Protocol, opts=Opts, handshake_timeout=HandshakeTimeout, max_conns=MaxConns, logger=Logger}, _Extra) ->
-error_logger:info_msg("DOWNGRADING"),
+code_change({down, _}, #state{parent=Parent, ref=Ref, conn_type=ConnType, shutdown=Shutdown, transport=Transport, protocol=Protocol, opts=Opts, handshake_timeout=HandshakeTimeout, max_conns=MaxConns, logger=Logger}, _Extra) ->
 	{ok, {statex, Parent, Ref, ConnType, Shutdown, Transport, Protocol, Opts, HandshakeTimeout, MaxConns, Logger}};
-code_change("2.0.0-rc.3", {state, Parent, Ref, ConnType, Shutdown, Transport, Protocol, Opts, HandshakeTimeout, MaxConns, Logger}, _Extra) ->
-error_logger:info_msg("UPGRADING"),
+code_change(_, {state, Parent, Ref, ConnType, Shutdown, Transport, Protocol, Opts, HandshakeTimeout, MaxConns, Logger}, _Extra) ->
 	{ok, #state{parent=Parent, ref=Ref, conn_type=ConnType, shutdown=Shutdown, transport=Transport, protocol=Protocol, opts=Opts, handshake_timeout=HandshakeTimeout, max_conns=MaxConns, logger=Logger}};
 code_change(_OldVsn, State, _Extra) ->
-error_logger:info_msg("~p~n", [application:which_applications()]),
-error_logger:info_msg("~p ~p ~p", [_OldVsn, State, _Extra]),
 	{ok, State}.
 
 %% We use ~999999p here instead of ~w because the latter doesn't
