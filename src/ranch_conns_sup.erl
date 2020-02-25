@@ -417,11 +417,11 @@ system_code_change({State0, CurConns, NbChildren, Sleepers}, _, OldVsn, Extra) -
 	{ok, State1}=code_change(OldVsn, State0, Extra),
 	{ok, {State1, CurConns, NbChildren, Sleepers}}.
 
-code_change({down, _}, #state{parent=Parent, ref=Ref, conn_type=ConnType, shutdown=Shutdown, transport=Transport, protocol=Protocol, opts=Opts, handshake_timeout=HandshakeTimeout, max_conns=MaxConns, logger=Logger}, _Extra) ->
-error_logger:info_msg("####### DOWN #######~n"),
+code_change(Vsn={down, _}, #state{parent=Parent, ref=Ref, conn_type=ConnType, shutdown=Shutdown, transport=Transport, protocol=Protocol, opts=Opts, handshake_timeout=HandshakeTimeout, max_conns=MaxConns, logger=Logger}, _Extra) ->
+error_logger:info_msg("####### DOWN ####### ~p~n", [Vsn]),
 	{ok, {state, Parent, Ref, ConnType, Shutdown, Transport, Protocol, Opts, HandshakeTimeout, MaxConns, Logger}};
-code_change(_, {state, Parent, Ref, ConnType, Shutdown, Transport, Protocol, Opts, HandshakeTimeout, MaxConns, Logger}, _Extra) ->
-error_logger:info_msg("####### UP #######~n"),
+code_change(Vsn, {state, Parent, Ref, ConnType, Shutdown, Transport, Protocol, Opts, HandshakeTimeout, MaxConns, Logger}, _Extra) ->
+error_logger:info_msg("####### UP ####### ~p~n", [Vsn]),
 	{ok, #state{parent=Parent, ref=Ref, conn_type=ConnType, shutdown=Shutdown, transport=Transport, protocol=Protocol, opts=Opts, handshake_timeout=HandshakeTimeout, max_conns=MaxConns, logger=Logger}};
 code_change(_OldVsn, State, _Extra) ->
 error_logger:info_msg("####### OTHER ####### ~p ~p ~p~n", [_OldVsn, State, _Extra]),
