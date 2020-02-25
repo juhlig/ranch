@@ -422,6 +422,7 @@ code_change("2.0.0-rc.3", {state, Parent, Ref, ConnType, Shutdown, Transport, Pr
 error_logger:info_msg("UPGRADING"),
 	{ok, #state{parent=Parent, ref=Ref, conn_type=ConnType, shutdown=Shutdown, transport=Transport, protocol=Protocol, opts=Opts, handshake_timeout=HandshakeTimeout, max_conns=MaxConns, logger=Logger}};
 code_change(_OldVsn, State, _Extra) ->
+error_logger:info_msg("~p~n", [application:which_applications()]),
 error_logger:info_msg("~p ~p ~p", [_OldVsn, State, _Extra]),
 	{ok, State}.
 
