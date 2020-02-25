@@ -404,7 +404,7 @@ wait_children(NbChildren) ->
 
 -spec system_continue(_, _, any()) -> no_return().
 system_continue(_, _, {State, CurConns, NbChildren, Sleepers}) ->
-	loop(State, CurConns, NbChildren, Sleepers).
+	?MODULE:loop(State, CurConns, NbChildren, Sleepers).
 
 -spec system_terminate(any(), _, _, _) -> no_return().
 system_terminate(Reason, _, _, {State, _, NbChildren, _}) ->
