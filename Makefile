@@ -12,7 +12,7 @@ PLT_APPS = crypto public_key tools
 
 # Dependencies.
 
-LOCAL_DEPS = ssl
+LOCAL_DEPS = ssl sasl
 
 DOC_DEPS = asciideck
 
