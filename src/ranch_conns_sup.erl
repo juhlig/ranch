@@ -411,8 +411,9 @@ system_terminate(Reason, _, _, {State, _, NbChildren, _}) ->
 	terminate(State, Reason, NbChildren).
 
 -spec system_code_change(any(), _, _, _) -> {ok, any()}.
-system_code_change(Misc, _, OldVsn, Extra) ->
-	code_change(Misc, OldVsn, Extra).
+system_code_change({State0, CurConns, NbChildren, Sleepers}, _, OldVsn, Extra) ->
+	{ok, State1}=code_change(OldVsn, State0, Extra),
+	{ok, {State1, CurConns, NbChildren, Sleepers}}.
 
 code_change({down, "2.0.0-rc.3"}, #state{parent=Parent, ref=Ref, conn_type=ConnType, shutdown=Shutdown, transport=Transport, protocol=Protocol, opts=Opts, handshake_timeout=HandshakeTimeout, max_conns=MaxConns, logger=Logger}, _Extra) ->
 	{ok, {state,  Parent, Ref, ConnType, Shutdown, Transport, Protocol, Opts, HandshakeTimeout, MaxConns, Logger}};
