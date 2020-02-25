@@ -24,6 +24,7 @@
 
 %% Supervisor internals.
 -export([init/7]).
+-export([loop/4]).
 -export([system_continue/3]).
 -export([system_terminate/4]).
 -export([system_code_change/4]).
@@ -112,12 +113,13 @@ init(Parent, Ref, Id, Transport, TransOpts, Protocol, Logger) ->
 	HandshakeTimeout = maps:get(handshake_timeout, TransOpts, 5000),
 	ProtoOpts = ranch_server:get_protocol_options(Ref),
 	ok = proc_lib:init_ack(Parent, {ok, self()}),
-	loop(#state{parent=Parent, ref=Ref, conn_type=ConnType,
+	?MODULE:loop(#state{parent=Parent, ref=Ref, conn_type=ConnType,
 		shutdown=Shutdown, transport=Transport, protocol=Protocol,
 		opts=ProtoOpts, handshake_timeout=HandshakeTimeout,
 		max_conns=MaxConns, alarm=Alarm, alarm_ref=undefined,
 		logger=Logger}, 0, 0, []).
 
+-spec loop(_, _, _, _) -> no_return().
 loop(State=#state{parent=Parent, ref=Ref, conn_type=ConnType,
 		transport=Transport, protocol=Protocol, opts=Opts,
 		max_conns=MaxConns, alarm_ref=AlarmRef, logger=Logger}, CurConns, NbChildren, Sleepers) ->
