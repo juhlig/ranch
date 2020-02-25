@@ -411,8 +411,15 @@ system_terminate(Reason, _, _, {State, _, NbChildren, _}) ->
 	terminate(State, Reason, NbChildren).
 
 -spec system_code_change(any(), _, _, _) -> {ok, any()}.
-system_code_change(Misc, _, _, _) ->
-	{ok, Misc}.
+system_code_change(Misc, _, OldVsn, Extra) ->
+	code_change(Misc, OldVsn, Extra).
+
+code_change({down, "2.0.0-rc.3"}, #state{parent=Parent, ref=Ref, conn_type=ConnType, shutdown=Shutdown, transport=Transport, protocol=Protocol, opts=Opts, handshake_timeout=HandshakeTimeout, max_conns=MaxConns, logger=Logger}, _Extra) ->
+	{ok, {state,  Parent, Ref, ConnType, Shutdown, Transport, Protocol, Opts, HandshakeTimeout, MaxConns, Logger}};
+code_change("2.0.0-rc.3", {state,  Parent, Ref, ConnType, Shutdown, Transport, Protocol, Opts, HandshakeTimeout, MaxConns, Logger}, _Extra) ->
+	{ok, #state{parent=Parent, ref=Ref, conn_type=ConnType, shutdown=Shutdown, transport=Transport, protocol=Protocol, opts=Opts, handshake_timeout=HandshakeTimeout, max_conns=MaxConns, logger=Logger}};
+code_change(_OldVsn, State, _Extra) ->
+	{ok, State}.
 
 %% We use ~999999p here instead of ~w because the latter doesn't
 %% support printable strings.
