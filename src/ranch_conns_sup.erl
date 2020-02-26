@@ -417,10 +417,10 @@ system_code_change({State0, CurConns, NbChildren, Sleepers}, _, OldVsn, Extra) -
 	{ok, State1}=code_change(OldVsn, State0, Extra),
 	{ok, {State1, CurConns, NbChildren, Sleepers}}.
 
-code_change(Vsn={down, _}, #state{parent=Parent, ref=Ref, conn_type=ConnType, shutdown=Shutdown, transport=Transport, protocol=Protocol, opts=Opts, handshake_timeout=HandshakeTimeout, max_conns=MaxConns, logger=Logger}, _Extra) ->
+code_change({down, _}, {state, Parent, Ref, ConnType, Shutdown, Transport, Protocol, Opts, HandshakeTimeout, MaxConns, _, _, Logger}, _Extra) ->
 	{ok, {state, Parent, Ref, ConnType, Shutdown, Transport, Protocol, Opts, HandshakeTimeout, MaxConns, Logger}};
-code_change(Vsn, {state, Parent, Ref, ConnType, Shutdown, Transport, Protocol, Opts, HandshakeTimeout, MaxConns, Logger}, _Extra) ->
-	{ok, #state{parent=Parent, ref=Ref, conn_type=ConnType, shutdown=Shutdown, transport=Transport, protocol=Protocol, opts=Opts, handshake_timeout=HandshakeTimeout, max_conns=MaxConns, logger=Logger}};
+code_change(_, {state, Parent, Ref, ConnType, Shutdown, Transport, Protocol, Opts, HandshakeTimeout, MaxConns, Logger}, _Extra) ->
+	{ok, {state, Parent, Ref, ConnType, Shutdown, Transport, Protocol, Opts, HandshakeTimeout, MaxConns, undefined, undefined, Logger}};
 code_change(_OldVsn, State, _Extra) ->
 	{ok, State}.
 
