@@ -413,7 +413,8 @@ system_terminate(Reason, _, _, {State, _, NbChildren, _}) ->
 	terminate(State, Reason, NbChildren).
 
 -spec system_code_change(any(), _, _, _) -> {ok, any()}.
-system_code_change({State0, CurConns, NbChildren, Sleepers}, _, OldVsn, Extra) ->
+system_code_change(Misc={State0, CurConns, NbChildren, Sleepers}, Debug, OldVsn, Extra) ->
+error_logger:info_msg("Misc=~p, Debug=~p, OldVsn=~p, Extra=~p~n", [Misc, Debug, OldVsn, Extra]),
 	{ok, State1}=code_change(OldVsn, State0, Extra),
 	{ok, {State1, CurConns, NbChildren, Sleepers}}.
 
