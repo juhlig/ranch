@@ -15,7 +15,7 @@
 		{update, ranch_listener_sup, supervisor},
 		{load_module, ranch_protocol},
 		{load_module, ranch_proxy_header},
-		{load_module, ranch_server},
+		{update, ranch_server, {advanced, []}},
 		{update, ranch_server_proxy, {advanced, []}},
 		{load_module, ranch_ssl},
 		{update, ranch_sup, supervisor},

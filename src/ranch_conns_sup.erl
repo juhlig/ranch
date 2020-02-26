@@ -113,7 +113,7 @@ init(Parent, Ref, Id, Transport, TransOpts, Protocol, Logger) ->
 	HandshakeTimeout = maps:get(handshake_timeout, TransOpts, 5000),
 	ProtoOpts = ranch_server:get_protocol_options(Ref),
 	ok = proc_lib:init_ack(Parent, {ok, self()}),
-	?MODULE:loop(#state{parent=Parent, ref=Ref, conn_type=ConnType,
+	loop(#state{parent=Parent, ref=Ref, conn_type=ConnType,
 		shutdown=Shutdown, transport=Transport, protocol=Protocol,
 		opts=ProtoOpts, handshake_timeout=HandshakeTimeout,
 		max_conns=MaxConns, alarm=Alarm, alarm_ref=undefined,
@@ -406,7 +406,7 @@ wait_children(NbChildren) ->
 
 -spec system_continue(_, _, any()) -> no_return().
 system_continue(_, _, {State, CurConns, NbChildren, Sleepers}) ->
-	?MODULE:loop(State, CurConns, NbChildren, Sleepers).
+	loop(State, CurConns, NbChildren, Sleepers).
 
 -spec system_terminate(any(), _, _, _) -> no_return().
 system_terminate(Reason, _, _, {State, _, NbChildren, _}) ->
@@ -418,13 +418,10 @@ system_code_change({State0, CurConns, NbChildren, Sleepers}, _, OldVsn, Extra) -
 	{ok, {State1, CurConns, NbChildren, Sleepers}}.
 
 code_change(Vsn={down, _}, #state{parent=Parent, ref=Ref, conn_type=ConnType, shutdown=Shutdown, transport=Transport, protocol=Protocol, opts=Opts, handshake_timeout=HandshakeTimeout, max_conns=MaxConns, logger=Logger}, _Extra) ->
-error_logger:info_msg("####### DOWN ####### ~p~n", [Vsn]),
 	{ok, {state, Parent, Ref, ConnType, Shutdown, Transport, Protocol, Opts, HandshakeTimeout, MaxConns, Logger}};
 code_change(Vsn, {state, Parent, Ref, ConnType, Shutdown, Transport, Protocol, Opts, HandshakeTimeout, MaxConns, Logger}, _Extra) ->
-error_logger:info_msg("####### UP ####### ~p~n", [Vsn]),
 	{ok, #state{parent=Parent, ref=Ref, conn_type=ConnType, shutdown=Shutdown, transport=Transport, protocol=Protocol, opts=Opts, handshake_timeout=HandshakeTimeout, max_conns=MaxConns, logger=Logger}};
 code_change(_OldVsn, State, _Extra) ->
-error_logger:info_msg("####### OTHER ####### ~p ~p ~p~n", [_OldVsn, State, _Extra]),
 	{ok, State}.
 
 %% We use ~999999p here instead of ~w because the latter doesn't
