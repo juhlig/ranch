@@ -237,7 +237,7 @@ terminate(_Reason, _State) ->
 
 -spec code_change(term() | {down, term()}, #state{}, term()) -> {ok, term()}.
 code_change(_OldVsn, State, _Extra) ->
-error_logger:info_msg("~p:~p called~n", [?MODULE, ?FUNCTION_NAME]),
+error_logger:info_msg("~p:~p called for ~p~n", [?MODULE, ?FUNCTION_NAME, _OldVsn]),
 	{ok, State}.
 
 %% Internal.
